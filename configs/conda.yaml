@@ -1,0 +1,19 @@
+name: assembleqc2
+channels:
+  - bioconda
+  - conda-forge
+  - mamba
+dependencies:
+  - pandas = 1.4.1
+  - porechop = 0.2.4
+  - fastqc = 0.11.9
+  - kraken2 = 2.1.2
+  - flye = 2.9
+  - samtools = 1.14
+  - assembly-stats = 1.0.1
+  - racon = 1.4.20
+  - medaka = 1.5.0
+  - seqtk = 1.3
+  - minimap2 = 2.24
+  - multiqc = 1.12
+

@@ -1,0 +1,15 @@
+# config file for the job execution on cluster 
+
+__default__:
+    account: "ClinicalMicrobio"
+    cpus-per-task: "{threads}"
+    time: "04:00:00"
+    mem: 16000 # {mem_mb}
+    
+    output: "logs/{rule}-%j.out"
+    #output: "logs/{rule}.out"
+
+    error: "logs/{rule}-%j.err"
+    #error: "logs/{rule}.err"
+
+
