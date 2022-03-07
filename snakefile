@@ -228,15 +228,17 @@ print()
 
 rule all:
     input:
-        expand(["{out_base}/{sample_id}/read_filtering/{sample_id}.fastq", \
+        expand(["{out_base}/{sample_id}/read_filtering/{sample_id}.fastq.gz", \
+                "{out_base}/{sample_id}/read_filtering/{sample_id}_nanostat", \
                 "{out_base}/{sample_id}/trimmed/{sample_id}_trimmed.fastq.gz", \
                 "{out_base}/{sample_id}/{sample_id}_kraken2_reads_report.txt", \
-                "{out_base}/{sample_id}/{sample_id}_assembly-stats.tab", \
-                "{out_base}/flye/{sample_id}/{sample_id}_assembly.fasta", \
-                "{out_base}/{sample_id}/mapping_done.flag", \
-                #"{out_base}/{sample_id}/{sample_id}_consensus.gff", \
-                #"{out_base}/{sample_id}/{sample_id}_consensus.gbk", \
-                #"{out_base}/multiqc_report.html" \
+                "{out_base}/{sample_id}/flye/{sample_id}_assembly.fasta", \
+                "{out_base}/{sample_id}/flye/{sample_id}_report.txt", \
+                "{out_base}/{sample_id}/qualimapReport.html", \
+                "{out_base}/{sample_id}/{sample_id}_consensus.fasta", \
+                "{out_base}/{sample_id}/{sample_id}_consensus.gff", \
+                "{out_base}/{sample_id}/{sample_id}_consensus.gbk", \
+                "{out_base}/multiqc_report.html" \
                 ], \
                 
                out_base = out_base, sample_id = df["sample_id"])
@@ -252,19 +254,33 @@ rule all:
 rule merge_reads:
     input:
         barcode_dir = directory(lambda wildcards: workflow_table[workflow_table["sample_id"] == wildcards.sample_id]["barcode_path"].values[0])
-    output: "{out_base}/{sample_id}/read_filtering/{sample_id}.fastq"
+    output: "{out_base}/{sample_id}/read_filtering/{sample_id}.fastq.gz"
+    conda: "configs/conda.yaml"
+    threads: 1
     shell: """
-    cd {input.barcode_dir}
 
-    cat * > {output}
+    cat {input.barcode_dir}/* > {output}
 
+
+    """
+
+rule nanostat:
+    input:
+        "{out_base}/{sample_id}/read_filtering/{sample_id}.fastq.gz"
+    output: 
+        "{out_base}/{sample_id}/read_filtering/{sample_id}_nanostat"
+    conda: "configs/conda.yaml"
+    threads: 1
+    shell: """
+
+    NanoStat --fastq {input} -o {out_base}/{wildcards.sample_id}/read_filtering/ -n {wildcards.sample_id}_nanostat
 
     """
 
 # Trim adapters
 rule trim_adapt:
     input: 
-        "{out_base}/{sample_id}/read_filtering/{sample_id}.fastq"
+        "{out_base}/{sample_id}/read_filtering/{sample_id}.fastq.gz"
     output: 
         "{out_base}/{sample_id}/trimmed/{sample_id}_trimmed.fastq.gz"
     conda: "configs/conda.yaml"
@@ -293,34 +309,30 @@ rule assemble:
     input: 
         "{out_base}/{sample_id}/trimmed/{sample_id}_trimmed.fastq.gz"
     output: 
-        contigs = "{out_base}/flye/{sample_id}/{sample_id}_assembly.fasta",
-        assembly_stats = "{out_base}/{sample_id}/{sample_id}_assembly-stats.tab"
+        contigs = "{out_base}/{sample_id}/flye/{sample_id}_assembly.fasta"
     conda: "configs/conda.yaml"
     threads: 4
     shell: """
 
-        mkdir -p {out_base}/{wildcards.sample_id}/assembly
-
         flye -t 4 -i 2 -g 2.5m  --nano-hq {input} --asm-coverage 50 --out-dir {out_base}/{wildcards.sample_id}/flye
         cp {out_base}/{wildcards.sample_id}/flye/assembly.fasta {output.contigs}
-        assembly-stats -t {output.contigs} > {output.assembly_stats}       
-            
+
         """
 
+rule qc_assemble:
+    input: 
+        "{out_base}/{sample_id}/flye/{sample_id}_assembly.fasta"
+    output: 
+        assembly_stats = "{out_base}/{sample_id}/flye/{sample_id}_report.txt"
+    conda: "configs/conda.yaml"
+    threads: 1
+    shell: """
 
-# rule minimap2: #maybe MEDAKA runs minimap and samtools, if so delete
-#     input:
-#         reads = "{out_base}/{sample_id}/trimmed/{sample_id}_trimmed.fq.gz",
-#         contigs = "{out_base}/flye/{sample_id}/{sample_id}_assembly.fasta"
-#     output:
-#         "{out_base}/{sample_id}/mapped_reads/{sample_id}.bam"
-#     conda: "configs/conda.yaml"
-#     threads: 8
-#     shell: """
+        quast -o {out_base}/{wildcards.sample_id}/flye/ {input}     
+        cp {out_base}/{wildcards.sample_id}/flye/report.txt {output.assembly_stats}    
+        """        
 
-#         minimap2 -ax map-ont {input.contigs} {input.reads} | samtools sort -o {output} 
 
-#             """
 
 # This rule polishes the assembly using Medaka, based on https://www.nature.com/articles/s41598-021-00178-w#Sec2 
 # Medaka runs minimap2 and samtools sort internally
@@ -328,17 +340,32 @@ rule assemble:
 rule medaka:
     input:
         reads = "{out_base}/{sample_id}/trimmed/{sample_id}_trimmed.fastq.gz",
-        contigs = "{out_base}/flye/{sample_id}/{sample_id}_assembly.fasta"
+        contigs = "{out_base}/{sample_id}/flye/{sample_id}_assembly.fasta"
     output:
-        #"{out_base}/{sample_id}/mapped_reads/{sample_id}.bam"
-        touch("{out_base}/{sample_id}/mapping_done.flag")
-    conda: "configs/conda.yaml"
+        "{out_base}/{sample_id}/{sample_id}_consensus.fasta"
+        
+    conda: "configs/medaka.yaml"
     threads: 8
     shell: """
 
         mkdir -p {out_base}/{wildcards.sample_id}/medaka
 
-        medaka_consensus -i {input.reads} -d {input.contigs} -o {out_base}/{wildcards.sample_id}/medaka -t 8 -m r941_min_high
+        medaka_consensus -i {input.reads} -d {input.contigs} -o {out_base}/{wildcards.sample_id}/medaka -t 8 -m r941_min_fast_g303
+        cp {out_base}/{wildcards.sample_id}/medaka/consensus.fasta {output}
+
+            """
+rule mapping_qc:
+    input:
+        "{out_base}/{sample_id}/medaka/calls_to_draft.bam"
+    output:
+        "{out_base}/{sample_id}/qualimapReport.html"
+        
+    conda: "configs/conda.yaml"
+    threads: 4
+    shell: """
+
+        qualimap bamqc -bam {input} -nt 4 -outdir {out_base}/{wildcards.sample_id}/
+
 
             """
 
@@ -349,7 +376,8 @@ rule medaka:
 # Below not yet implemented:
 rule annotate_genes:
     input:
-        "{out_base}/{sample_id}/{sample_id}_consensus.fasta"
+        consensus = "{out_base}/{sample_id}/{sample_id}_consensus.fasta",
+        qualimapReport = "{out_base}/{sample_id}/qualimapReport.html"
     output:
         gff = "{out_base}/{sample_id}/{sample_id}_consensus.gff",
         gbk = "{out_base}/{sample_id}/{sample_id}_consensus.gbk"
@@ -357,7 +385,7 @@ rule annotate_genes:
     threads: 8
     shell: """
         mkdir -p {out_base}/{wildcards.sample_id}/prokka
-        prokka --outdir {out_base}/{wildcards.sample_id}/prokka --cpu 8 --force --prefix {wildcards.sample_id} {input}
+        prokka --outdir {out_base}/{wildcards.sample_id}/prokka --cpu 8 --force --prefix {wildcards.sample_id} {input.consensus}
         cp {out_base}/{wildcards.sample_id}/prokka/{wildcards.sample_id}.gff {output.gff}
         cp {out_base}/{wildcards.sample_id}/prokka/{wildcards.sample_id}.gbk {output.gbk}
 
@@ -365,7 +393,7 @@ rule annotate_genes:
 
 rule multiqc:
     input:
-        expand("{out_base}/{sample_id}/{sample_id}.gff", out_base = out_base, sample_id = df["sample_id"])
+        expand("{out_base}/{sample_id}/{sample_id}_consensus.gff", out_base = out_base, sample_id = df["sample_id"])
     output:
         "{out_base}/multiqc_report.html"
     conda: "configs/conda.yaml"

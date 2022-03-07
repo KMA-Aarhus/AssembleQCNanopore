@@ -4,12 +4,13 @@ channels:
   - conda-forge
   - mamba
 dependencies:
-#  - pandas = 1.4.1
+  - nanostat = 1.1.2
   - porechop = 0.2.4
-#  - fastqc = 0.11.9
+  - fastqc = 0.11.9
   - kraken2 = 2.1.2
   - flye = 2.9
-#  - multiqc = 1.12
-  - assembly-stats = 1.0.1
+  - multiqc = 1.12
+  - quast = 5.0.2
+  - qualimap
 #  - seqtk = 1.3
 
