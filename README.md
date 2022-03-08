@@ -1,5 +1,4 @@
 # AssembleQCNanopore
-# AssembleQC
 Input: 
 - Raw nanopore fastq files as output from MinKnow. The directory must contain a folder titled "fastq_pass". This matches the default output format.   
 - Samplesheet containing sample ids and barcodes. Barcodes must be in the format "NB01", "NB02" etc.  
