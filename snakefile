@@ -176,23 +176,6 @@ out_base = os.path.join(base_dir, "assembleQC_output") # out_base is the directo
 
 
 # And here is the code from the rule wait_for_minknow
-minutes_wait = 10
-print("Checking that the sequencing_summary_*.txt-file has been written to disk ...")
-while True:
-    sequencing_summary_file = glob.glob(base_dir + "/sequencing_summary_*.txt")
-    if len(sequencing_summary_file) == 0:
-        print(f"  Still sequencing/basecalling; waiting {minutes_wait} minutes ...")
-        time.sleep(60*minutes_wait)
-    else:
-        break
-
-
-
-sequencing_summary_file = sequencing_summary_file[0]
-print("  The sequencing summary has been found                ✓")
-#print(f"  This is the sequencing_summary_*.txt-file: \"{sequencing_summary_file.split('/')[-1]}\"")
-print(f"  This is the sequencing_summary_*.txt-file (full): \"{sequencing_summary_file}\"")
-
 
 sample_sheet_given_file = f"{fastq_pass_base}/../sample_sheet_given.tsv"
 print(f"Backing up the original sample sheet ...               ", end = "", flush = True)
@@ -342,7 +325,8 @@ rule medaka:
         reads = "{out_base}/{sample_id}/trimmed/{sample_id}_trimmed.fastq.gz",
         contigs = "{out_base}/{sample_id}/flye/{sample_id}_assembly.fasta"
     output:
-        "{out_base}/{sample_id}/{sample_id}_consensus.fasta"
+        consensus = "{out_base}/{sample_id}/{sample_id}_consensus.fasta",
+        mapping = "{out_base}/{sample_id}/medaka/calls_to_draft.bam"
         
     conda: "configs/medaka.yaml"
     threads: 8
@@ -351,7 +335,7 @@ rule medaka:
         mkdir -p {out_base}/{wildcards.sample_id}/medaka
 
         medaka_consensus -i {input.reads} -d {input.contigs} -o {out_base}/{wildcards.sample_id}/medaka -t 8 -m r941_min_fast_g303
-        cp {out_base}/{wildcards.sample_id}/medaka/consensus.fasta {output}
+        cp {out_base}/{wildcards.sample_id}/medaka/consensus.fasta {output.consensus}
 
             """
 rule mapping_qc:
