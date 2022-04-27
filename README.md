@@ -17,6 +17,10 @@ https://docs.conda.io/en/latest/miniconda.html.
 https://openpyxl.readthedocs.io/en/stable/.  
 https://snakemake.readthedocs.io/en/stable/. 
 
+## DAG of workflow
+![AssembleQCNanopore](https://user-images.githubusercontent.com/90172976/165507987-cd19bc60-4118-40e6-878d-4675c2476c13.png)
+
+
 ### Install with git
 ```
 git clone https://github.com/KMA-Aarhus/AssembleQCNanopore.git
