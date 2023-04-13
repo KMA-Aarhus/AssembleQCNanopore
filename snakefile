@@ -84,7 +84,7 @@ for i in ["barcode", "sample_id"]:
         raise Exception(f"The sample sheet is missing a necessary column. The sample sheet must contain the column {i}, but it only contains {df.columns.tolist()}")
 print("✓")
 
-acceptable_barcodes = [f"NB{i:02d}" for i in range(1,97)]
+acceptable_barcodes = [f"NB{i:02d}" for i in range(1,97)]+[f"RB{i:02d}" for i in range(1,97)]
 
 print("Checking that the barcodes are correctly formatted and that the barcodes are unique... ", end = "", flush = True)
 for i in df["barcode"]:
@@ -153,25 +153,6 @@ print(f"This is the batch base directory:{nl}  {base_dir}")
 
 
 
-very_long_batch_id = base_dir.split("/")[-1]
-print(f"This is the very long batch id:", very_long_batch_id)
-
-date_parse, time_parse, minion_parse, flowcell_parse, arbhash_parse = very_long_batch_id.split("_")
-
-print("date:    ", date_parse)
-print("time:    ", time_parse)
-print("minion:  ", minion_parse)
-print("flowcell:", flowcell_parse)
-print("arbhash: ", arbhash_parse)
-
-
-
-
-batch_id = ".".join(very_long_batch_id.split("_")[0:2]) # The first two words (date, time), joined by a dot.
-print(f"This is the parsed batch_id:", batch_id)
-
-
-
 out_base = os.path.join(base_dir, "assembleQC_output") # out_base is the directory where the pipeline will write its output to.
 
 
@@ -188,7 +169,12 @@ disk_barcodes_list  = sorted(glob.glob(fastq_pass_base + "/barcode*")) # Find al
 disk_barcodes_df = pd.DataFrame({'barcode_path': disk_barcodes_list})
 
 disk_barcodes_df = disk_barcodes_df.assign(barcode_basename = [i.split("/")[-1] for i in disk_barcodes_df["barcode_path"]])
-disk_barcodes_df = disk_barcodes_df.assign(barcode = ["NB" + i[-2:] for i in disk_barcodes_df["barcode_path"]])
+if "RB" in df["barcode"][0]:
+    disk_barcodes_df = disk_barcodes_df.assign(barcode = ["RB" + i[-2:] for i in disk_barcodes_df["barcode_path"]])
+elif "NB" in df["barcode"][0]:
+    disk_barcodes_df = disk_barcodes_df.assign(barcode = ["NB" + i[-2:] for i in disk_barcodes_df["barcode_path"]])
+else:
+    raise Exception(f"Barcodes in samplesheet are not acceptable")
 
 
 
@@ -252,7 +238,7 @@ rule nanostat:
         "{out_base}/{sample_id}/read_filtering/{sample_id}.fastq.gz"
     output: 
         "{out_base}/{sample_id}/read_filtering/{sample_id}_nanostat"
-    conda: "configs/conda.yaml"
+    conda: "configs/nanostat.yaml"
     threads: 1
     shell: """
 
@@ -281,10 +267,10 @@ rule kraken2:
         "{out_base}/{sample_id}/trimmed/{sample_id}_trimmed.fastq.gz"
     output: 
         "{out_base}/{sample_id}/{sample_id}_kraken2_reads_report.txt"
-    threads: 8
+    threads: 16
     conda: "configs/conda.yaml"
     shell: """
-        kraken2 --db {kraken2_db} --report {output} --threads 8 {input}       
+        kraken2 --db {kraken2_db} --report {output} --threads 8 {input}  --unclassified-out {out_base}/{wildcards.sample_id}/kraken2/{wildcards.sample_id}_unclassified.fastq.gz  
     """
 
 
@@ -297,7 +283,7 @@ rule assemble:
     threads: 4
     shell: """
 
-        flye -t 4 -i 2 -g 2.5m  --nano-hq {input} --asm-coverage 50 --out-dir {out_base}/{wildcards.sample_id}/flye
+        flye -t 4 -i 2 -g 2.5m --plasmids --nano-hq {input} --asm-coverage 50 --out-dir {out_base}/{wildcards.sample_id}/flye
         cp {out_base}/{wildcards.sample_id}/flye/assembly.fasta {output.contigs}
 
         """
@@ -326,7 +312,7 @@ rule medaka:
         contigs = "{out_base}/{sample_id}/flye/{sample_id}_assembly.fasta"
     output:
         consensus = "{out_base}/{sample_id}/{sample_id}_consensus.fasta",
-        mapping = "{out_base}/{sample_id}/medaka/calls_to_draft.bam"
+        mapping = "{out_base}/{sample_id}/medaka/{sample_id}.bam"
         
     conda: "configs/medaka.yaml"
     threads: 8
@@ -336,11 +322,12 @@ rule medaka:
 
         medaka_consensus -i {input.reads} -d {input.contigs} -o {out_base}/{wildcards.sample_id}/medaka -t 8 -m r941_min_fast_g303
         cp {out_base}/{wildcards.sample_id}/medaka/consensus.fasta {output.consensus}
+        mv {out_base}/{wildcards.sample_id}/medaka/calls_to_draft.bam {output.mapping}
 
             """
 rule mapping_qc:
     input:
-        "{out_base}/{sample_id}/medaka/calls_to_draft.bam"
+        "{out_base}/{sample_id}/medaka/{sample_id}.bam"
     output:
         "{out_base}/{sample_id}/qualimapReport.html"
         
@@ -348,7 +335,7 @@ rule mapping_qc:
     threads: 4
     shell: """
 
-        qualimap bamqc -bam {input} -nt 4 -outdir {out_base}/{wildcards.sample_id}/
+        qualimap bamqc -bam {input} -nt 4 --java-mem-size=14G -outdir {out_base}/{wildcards.sample_id}/
 
 
             """
@@ -383,7 +370,8 @@ rule multiqc:
     conda: "configs/conda.yaml"
     threads: 1
     shell: """
-        multiqc -d {out_base} -o {out_base}
+        multiqc --config multiqc_config.yaml -d {out_base} -o {out_base} -f 
+
 
         """
 
