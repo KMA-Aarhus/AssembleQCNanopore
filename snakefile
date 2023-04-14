@@ -258,7 +258,7 @@ rule trim_adapt:
 
     mkdir -p {out_base}/{wildcards.sample_id}/trimmed
 
-    porechop -i {input} --format fastq.gz -t 4 -o {output}
+    porechop -i {input} --format fastq.gz -t {threads} -o {output}
 
     """
 
@@ -270,7 +270,7 @@ rule kraken2:
     threads: 16
     conda: "configs/conda.yaml"
     shell: """
-        kraken2 --db {kraken2_db} --report {output} --threads 8 {input}  --unclassified-out {out_base}/{wildcards.sample_id}/kraken2/{wildcards.sample_id}_unclassified.fastq.gz  
+        kraken2 --db {kraken2_db} --report {output} --threads {threads} {input}  --unclassified-out {out_base}/{wildcards.sample_id}/kraken2/{wildcards.sample_id}_unclassified.fastq.gz  
     """
 
 
@@ -283,7 +283,7 @@ rule assemble:
     threads: 4
     shell: """
 
-        flye -t 4 -i 2 -g 2.5m --plasmids --nano-hq {input} --asm-coverage 50 --out-dir {out_base}/{wildcards.sample_id}/flye
+        flye -t {threads} -i 2 -g 2.5m --plasmids --nano-hq {input} --asm-coverage 50 --out-dir {out_base}/{wildcards.sample_id}/flye
         cp {out_base}/{wildcards.sample_id}/flye/assembly.fasta {output.contigs}
 
         """
@@ -320,7 +320,7 @@ rule medaka:
 
         mkdir -p {out_base}/{wildcards.sample_id}/medaka
 
-        medaka_consensus -i {input.reads} -d {input.contigs} -o {out_base}/{wildcards.sample_id}/medaka -t 8 -m r941_min_fast_g303
+        medaka_consensus -i {input.reads} -d {input.contigs} -o {out_base}/{wildcards.sample_id}/medaka -t {threads} -m r941_min_fast_g303
         cp {out_base}/{wildcards.sample_id}/medaka/consensus.fasta {output.consensus}
         mv {out_base}/{wildcards.sample_id}/medaka/calls_to_draft.bam {output.mapping}
 
@@ -335,7 +335,7 @@ rule mapping_qc:
     threads: 4
     shell: """
 
-        qualimap bamqc -bam {input} -nt 4 --java-mem-size=14G -outdir {out_base}/{wildcards.sample_id}/
+        qualimap bamqc -bam {input} -nt {threads} --java-mem-size=14G -outdir {out_base}/{wildcards.sample_id}/
 
 
             """
@@ -356,7 +356,7 @@ rule annotate_genes:
     threads: 8
     shell: """
         mkdir -p {out_base}/{wildcards.sample_id}/prokka
-        prokka --outdir {out_base}/{wildcards.sample_id}/prokka --cpu 8 --force --prefix {wildcards.sample_id} {input.consensus}
+        prokka --outdir {out_base}/{wildcards.sample_id}/prokka --cpu {threads} --force --prefix {wildcards.sample_id} {input.consensus}
         cp {out_base}/{wildcards.sample_id}/prokka/{wildcards.sample_id}.gff {output.gff}
         cp {out_base}/{wildcards.sample_id}/prokka/{wildcards.sample_id}.gbk {output.gbk}
 
