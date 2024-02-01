@@ -207,7 +207,9 @@ rule all:
                 "{out_base}/{sample_id}/{sample_id}_consensus.fasta", \
                 "{out_base}/{sample_id}/{sample_id}_consensus.gff", \
                 "{out_base}/{sample_id}/{sample_id}_consensus.gbk", \
-                "{out_base}/multiqc_report.html" \
+                "{out_base}/multiqc_report.html", \
+                "{out_base}/{sample_id}/amr/{sample_id}_amrfinder.txt", \
+                "{out_base}/{sample_id}/amr/{sample_id}_abricate_plasmid.txt", \
                 ], \
                 
                out_base = out_base, sample_id = df["sample_id"])
@@ -320,7 +322,7 @@ rule medaka:
 
         mkdir -p {out_base}/{wildcards.sample_id}/medaka
 
-        medaka_consensus -i {input.reads} -d {input.contigs} -o {out_base}/{wildcards.sample_id}/medaka -t {threads} -m r941_min_fast_g303
+        medaka_consensus -i {input.reads} -d {input.contigs} -o {out_base}/{wildcards.sample_id}/medaka -t {threads} -m r1041_e82_400bps_hac_g632
         cp {out_base}/{wildcards.sample_id}/medaka/consensus.fasta {output.consensus}
         mv {out_base}/{wildcards.sample_id}/medaka/calls_to_draft.bam {output.mapping}
 
@@ -351,7 +353,9 @@ rule annotate_genes:
         qualimapReport = "{out_base}/{sample_id}/qualimapReport.html"
     output:
         gff = "{out_base}/{sample_id}/{sample_id}_consensus.gff",
-        gbk = "{out_base}/{sample_id}/{sample_id}_consensus.gbk"
+        gbk = "{out_base}/{sample_id}/{sample_id}_consensus.gbk",
+	faa = "{out_base}/{sample_id}/prokka/{sample_id}.faa",
+	fna = "{out_base}/{sample_id}/prokka/{sample_id}.fna"
     conda: "configs/prokka.yaml"
     threads: 8
     shell: """
@@ -370,8 +374,36 @@ rule multiqc:
     conda: "configs/conda.yaml"
     threads: 1
     shell: """
-        multiqc --config multiqc_config.yaml -d {out_base} -o {out_base} -f 
+        multiqc -d -dd 3 {out_base} -o {out_base} -f 
 
 
         """
 
+rule amr_finder:
+    input:
+        faa = "{out_base}/{sample_id}/prokka/{sample_id}.faa",
+        fna = "{out_base}/{sample_id}/prokka/{sample_id}.fna",
+        gff = "{out_base}/{sample_id}/{sample_id}_consensus.gff"
+    output:
+        "{out_base}/{sample_id}/amr/{sample_id}_amrfinder.txt"
+    conda: "configs/amr.yaml"
+    threads: 1
+    shell: """
+        mkdir -p {out_base}/{wildcards.sample_id}/amr
+        amrfinder -p {input.faa} -n {input.fna} -g {input.gff} --plus -a prokka -i 0.7 -o {output}
+
+
+        """
+
+rule abricate:
+    input:
+        consensus = "{out_base}/{sample_id}/{sample_id}_consensus.fasta"
+    output:
+        "{out_base}/{sample_id}/amr/{sample_id}_abricate_plasmid.txt"
+    conda: "configs/abricate.yaml"
+    threads: 1
+    shell: """
+        abricate {input.consensus} --db plasmidfinder > {output}
+
+
+        """
