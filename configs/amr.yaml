@@ -1,0 +1,7 @@
+name: amrfinder
+channels:
+  - bioconda
+  - conda-forge
+  - mamba
+dependencies:
+  - ncbi-amrfinderplus
