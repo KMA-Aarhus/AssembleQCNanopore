@@ -24,6 +24,7 @@ configfile: "config.yaml"
 samplesheet = config["samplesheet"]
 rundir = config["rundir"]
 kraken2_db = config["kraken2_db"]
+amr_db = config["amr_db"]
 
 
 tab = "\t"
@@ -390,7 +391,7 @@ rule amr_finder:
     threads: 1
     shell: """
         mkdir -p {out_base}/{wildcards.sample_id}/amr
-        amrfinder -p {input.faa} -n {input.fna} -g {input.gff} --plus -a prokka -i 0.7 -o {output}
+        amrfinder -p {input.faa} -n {input.fna} -g {input.gff} --plus -a prokka -i 0.7 -o {output} -d {amr_db}
 
 
         """

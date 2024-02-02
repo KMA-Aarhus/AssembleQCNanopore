@@ -3,3 +3,4 @@ rundir: "NA" # Defines where the raw uploads are placed.
 
 samplesheet: "NA"
 kraken2_db: "/project/ClinicalMicrobio/faststorage/database/kraken2_20210423"
+amr_db: "/project/ClinicalMicrobio/faststorage/database/amrfinderplus/data/latest"
