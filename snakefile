@@ -2,8 +2,8 @@
 
 
 print("/*")
-__author__ = "Tine Ebsen, Rikke M. Jensen" # Please add your name here if you make changes.
-__version__ = "0.2"
+__author__ = "Tine Ebsen, Rikke M. Jensen, Casper Thorup" # Please add your name here if you make changes.
+__version__ = "0.3"
 
 import sys
 import os
@@ -36,7 +36,8 @@ if config["samplesheet"] == "NA":
     raise Exception("No samplesheet file was given. Please specify a samplesheet by appending --config samplesheet=\"path/to/samplesheet/\" to the command line call.")
 if config["rundir"] == "NA":
     raise Exception("No rundir path was given. Please specify a rundir by appending --config rundir=\"path/to/rundir/\" to the command line call.")
-# TODO: Implement additional input validation, like checking that the objects given are file and dir respectively.
+
+
 
 print("        /\\                          | |   | |     / __ \\ / ____| KMA,AUH")
 print("       /  \\   ___ ___  ___ _ __ ___ | |__ | | ___| |  | | |      ")
@@ -85,11 +86,11 @@ for i in ["barcode", "sample_id"]:
         raise Exception(f"The sample sheet is missing a necessary column. The sample sheet must contain the column {i}, but it only contains {df.columns.tolist()}")
 print("✓")
 
+# Accepts both NB and RB barcodes.
 acceptable_barcodes = [f"NB{i:02d}" for i in range(1,97)]+[f"RB{i:02d}" for i in range(1,97)]
 
 print("Checking that the barcodes are correctly formatted and that the barcodes are unique... ", end = "", flush = True)
 for i in df["barcode"]:
-    #print("checking", i)
     if not i in acceptable_barcodes: 
         raise Exception(f"The given barcode \'{i}\' is not an acceptable barcode. Here is a list of acceptable barcodes for inspiration:{nl} {' '.join(acceptable_barcodes)}")
 if not len(df["barcode"]) == len(set(df["barcode"])):
@@ -111,9 +112,6 @@ print()
 ###################
 # Validate rundir #
 ###################
-
-# Wait for the rundir to occur in the specified path. 
-# If it doesn't occur after a specified waiting time, then stop the p
 
 if rundir[-1] == "/":
     print("Removing trailing slash from rundir")
@@ -152,12 +150,7 @@ del fastq_pass_bases
 base_dir = os.path.dirname(fastq_pass_base) # This only works because there is NOT a trailing slash on the fastq_pass_base
 print(f"This is the batch base directory:{nl}  {base_dir}")
 
-
-
 out_base = os.path.join(base_dir, "assembleQC_output") # out_base is the directory where the pipeline will write its output to.
-
-
-# And here is the code from the rule wait_for_minknow
 
 sample_sheet_given_file = f"{fastq_pass_base}/../sample_sheet_given.tsv"
 print(f"Backing up the original sample sheet ...               ", end = "", flush = True)
@@ -178,14 +171,12 @@ else:
     raise Exception(f"Barcodes in samplesheet are not acceptable")
 
 
-
 print("Continuing with the following barcodes:")
 
 # the workflow_table is the table that contains the records where the barcode could be found on the disk.
 workflow_table = disk_barcodes_df.merge(df, how='left', on='barcode') # left join (merge) the present barcodes onto the df table.
 workflow_table = workflow_table.dropna(subset = ["sample_id"])
 
-#print(workflow_table[["barcode", "sample_id", "type"]].to_string(index = False))
 print(workflow_table)
 print("//")
 print()
@@ -222,7 +213,7 @@ rule all:
 ###########################
 # Setup for data analysis #
 ###########################
-
+# Merges all reads from the different barcodes
 rule merge_reads:
     input:
         barcode_dir = directory(lambda wildcards: workflow_table[workflow_table["sample_id"] == wildcards.sample_id]["barcode_path"].values[0])
@@ -235,7 +226,7 @@ rule merge_reads:
 
 
     """
-
+# Basic QC
 rule nanostat:
     input:
         "{out_base}/{sample_id}/read_filtering/{sample_id}.fastq.gz"
@@ -249,7 +240,7 @@ rule nanostat:
 
     """
 
-# Trim adapters
+# Trim adapters. This is generally already done in minknow making this a backup step.
 rule trim_adapt:
     input: 
         "{out_base}/{sample_id}/read_filtering/{sample_id}.fastq.gz"
@@ -265,6 +256,7 @@ rule trim_adapt:
 
     """
 
+# Find species present in samples. Note that becaue kraken2 works better on Illumina, we will not see a 100 % species match even on isolates.
 rule kraken2:
     input:
         "{out_base}/{sample_id}/trimmed/{sample_id}_trimmed.fastq.gz"
@@ -276,7 +268,7 @@ rule kraken2:
         kraken2 --db {kraken2_db} --report {output} --threads {threads} {input}  --unclassified-out {out_base}/{wildcards.sample_id}/kraken2/{wildcards.sample_id}_unclassified.fastq.gz  
     """
 
-
+######### Not the best assembler but ok. This should be updated to a different and better assembler eventually.
 rule assemble:
     input: 
         "{out_base}/{sample_id}/trimmed/{sample_id}_trimmed.fastq.gz"
@@ -291,6 +283,7 @@ rule assemble:
 
         """
 
+# QC the created assembly
 rule qc_assemble:
     input: 
         "{out_base}/{sample_id}/flye/{sample_id}_assembly.fasta"
@@ -328,6 +321,8 @@ rule medaka:
         mv {out_base}/{wildcards.sample_id}/medaka/calls_to_draft.bam {output.mapping}
 
             """
+
+# QC. All reads should map back to the created assembly.
 rule mapping_qc:
     input:
         "{out_base}/{sample_id}/medaka/{sample_id}.bam"
@@ -346,8 +341,7 @@ rule mapping_qc:
         #It is not recommended to specify a value of --threads greater than 2 for medaka consensus since the compute scaling efficiency is poor beyond this. 
         #Note also that medaka consensus may been seen to use resources equivalent to <threads> + 4 as an additional 4 threads are used for reading and preparing input data.
 
-
-# Below not yet implemented:
+# Annotate genes.
 rule annotate_genes:
     input:
         consensus = "{out_base}/{sample_id}/{sample_id}_consensus.fasta",
@@ -366,7 +360,7 @@ rule annotate_genes:
         cp {out_base}/{wildcards.sample_id}/prokka/{wildcards.sample_id}.gbk {output.gbk}
 
         """
-
+# Collects the output in a report. TODO was customise this, maybe replace with a strict markdown script instead for full control
 rule multiqc:
     input:
         expand("{out_base}/{sample_id}/{sample_id}_consensus.gff", out_base = out_base, sample_id = df["sample_id"])
@@ -379,7 +373,7 @@ rule multiqc:
 
 
         """
-
+# Finds resistance genes. This is not working perfectly
 rule amr_finder:
     input:
         faa = "{out_base}/{sample_id}/prokka/{sample_id}.faa",
@@ -395,7 +389,7 @@ rule amr_finder:
 
 
         """
-
+# Finds plasmids
 rule abricate:
     input:
         consensus = "{out_base}/{sample_id}/{sample_id}_consensus.fasta"
