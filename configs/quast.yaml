@@ -1,6 +1,7 @@
-name: abricate
+name: quast
 channels:
   - bioconda
   - conda-forge
 dependencies:
-  - abricate
+  - quast = 5.0.2
+

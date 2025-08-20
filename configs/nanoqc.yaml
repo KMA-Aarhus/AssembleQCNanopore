@@ -1,6 +1,6 @@
-name: abricate
+name: nanoqc
 channels:
-  - bioconda
   - conda-forge
+  - bioconda
 dependencies:
-  - abricate
+  - nanoqc

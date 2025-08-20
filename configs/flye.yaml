@@ -1,6 +1,7 @@
-name: abricate
+name: flye
 channels:
   - bioconda
   - conda-forge
 dependencies:
-  - abricate
+  - flye = 2.9
+

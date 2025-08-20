@@ -1,6 +1,7 @@
-name: abricate
+name: qualimap
 channels:
   - bioconda
   - conda-forge
 dependencies:
-  - abricate
+  - qualimap = 2.3
+

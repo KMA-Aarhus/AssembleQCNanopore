@@ -1,10 +1,9 @@
 name: prokka
 channels:
-  - bioconda
   - conda-forge
-  - mamba
+  - bioconda
+  - defaults
 dependencies:
-  - prokka = 1.14.5
-  - blast = 2.12 #Muligvis versions clash her - krævet i separat config
-
-
+  - prokka = 1.14
+  - blast = 2.12 
+  - perl

@@ -1,7 +1,6 @@
 name: amrfinder
 channels:
-  - bioconda
   - conda-forge
-  - mamba
+  - defaults
 dependencies:
-  - ncbi-amrfinderplus
+  - ncbi-amrfinderplus = 4.0

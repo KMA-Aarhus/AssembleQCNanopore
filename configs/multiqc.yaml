@@ -1,6 +1,7 @@
-name: abricate
+name: multiqc
 channels:
-  - bioconda
   - conda-forge
 dependencies:
-  - abricate
+  - multiqc = 1.30
+
+

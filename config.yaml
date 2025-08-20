@@ -2,5 +2,5 @@
 rundir: "NA" # Defines where the raw uploads are placed.
 
 samplesheet: "NA"
-kraken2_db: "/project/ClinicalMicrobio/faststorage/database/kraken2_20210423"
-amr_db: "/project/ClinicalMicrobio/faststorage/database/amrfinderplus/data/latest"
+kraken2_db: "/project/ClinicalMicrobio/faststorage/database/k2_standard_20250714"
+amr_db: "/project/ClinicalMicrobio/faststorage/database/amrfinderplus/data/2025-07-16.1"

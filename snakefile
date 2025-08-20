@@ -53,9 +53,9 @@ print(f"  rundir: {rundir}")
 print()
 
 
-#########################
-# Parse the samplesheet #
-#########################
+######################################
+# Validate and parse the samplesheet #
+######################################
 
 samplesheet_extension = samplesheet.split(".")[-1]
 print(f"Reading .{samplesheet_extension}-type sample sheet \"{samplesheet}\"")
@@ -76,7 +76,7 @@ df.columns = map(str.lower, df.columns) # Lowercase
 df.columns = map(str.strip, df.columns) # Remove edge-spaces
 df.columns = map(lambda x: str(x).replace(" ", "_"), df.columns) # Replace spaces with underscore
 df["barcode"] = df["barcode"].apply(np.vectorize(lambda x: str(x).strip().replace(" ", ""))) # Because we are later going to join using this column, it is necessary to strip it for spaces.
-df = df.dropna(subset = ["sample_id"])# remove rows not containing a sample ID
+df = df.dropna(subset = ["sample_id"]) # Remove rows not containing a sample ID
 print("✓")
 
 # Check that the spreadsheet complies
@@ -86,8 +86,8 @@ for i in ["barcode", "sample_id"]:
         raise Exception(f"The sample sheet is missing a necessary column. The sample sheet must contain the column {i}, but it only contains {df.columns.tolist()}")
 print("✓")
 
-# Accepts both NB and RB barcodes.
-acceptable_barcodes = [f"NB{i:02d}" for i in range(1,97)]+[f"RB{i:02d}" for i in range(1,97)]
+
+acceptable_barcodes = [f"NB{i:02d}" for i in range(1,97)]+[f"RB{i:02d}" for i in range(1,97)] # Accepts barcodes formatted as both NB or RB barcodes.
 
 print("Checking that the barcodes are correctly formatted and that the barcodes are unique... ", end = "", flush = True)
 for i in df["barcode"]:
@@ -100,7 +100,7 @@ print("✓")
 
 print("Checking that the sample id's are unique ...           ", end = "", flush = True)
 if not len(df["sample_id"]) == len(set(df["sample_id"])):
-    raise Exception(f"One or more sample_id's are duplicated. Each sample_id may only be used once")
+    raise Exception(f"One or more sample_id's are duplicated. Each sample_id may only be used once") #If multiple instances of the same sample, either join in one barcode dir or analyse as sample_id_1, sample_id_2 etc
 print("✓")
 
 print()
@@ -109,9 +109,9 @@ print(df.to_string())
 print("//")
 print()
 
-###################
-# Validate rundir #
-###################
+#############################
+# Validate and parse rundir #
+#############################
 
 if rundir[-1] == "/":
     print("Removing trailing slash from rundir")
@@ -120,7 +120,7 @@ if rundir[-1] == "/":
 
 print("Checking that the rundir exists ...                    ", end = "", flush = True)
 if not os.path.isdir(rundir):
-    raise Exception(f"The rundir does not exist.")
+    raise Exception(f"The rundir does not exist. Check path and retry.")
 print("✓")
 
 print(f"Looking for MinKNOW-characteristic output:") #, end = "", flush = True)
@@ -130,7 +130,7 @@ for i in range(200):
     fastq_pass_bases = glob.glob(rundir + "/**/fastq_pass", recursive = True) # Find any occurrence of the wanted path
     if len(fastq_pass_bases) == 0:
         print("nothing found yet, waiting 10 secs ...")
-        time.sleep(10) # Wait 10 seconds.
+        time.sleep(10) # Wait 10 seconds. This allows the workflow to be started alongside the sequencing. Workflow will not run before the sequencing summary file is created.
     elif(i == 10):
         print() # clean newline
         raise Exception("nothing found after 10 tries. Aborting.")
@@ -150,7 +150,7 @@ del fastq_pass_bases
 base_dir = os.path.dirname(fastq_pass_base) # This only works because there is NOT a trailing slash on the fastq_pass_base
 print(f"This is the batch base directory:{nl}  {base_dir}")
 
-out_base = os.path.join(base_dir, "assembleQC_output") # out_base is the directory where the pipeline will write its output to.
+out_base = os.path.join(base_dir, "assembleQC_output") # out_base is the directory where the pipeline will write its output to. Same level as fastq_pass directory.
 
 sample_sheet_given_file = f"{fastq_pass_base}/../sample_sheet_given.tsv"
 print(f"Backing up the original sample sheet ...               ", end = "", flush = True)
@@ -173,7 +173,7 @@ else:
 
 print("Continuing with the following barcodes:")
 
-# the workflow_table is the table that contains the records where the barcode could be found on the disk.
+# The workflow_table is the table that contains the records where the barcode could be found on the disk.
 workflow_table = disk_barcodes_df.merge(df, how='left', on='barcode') # left join (merge) the present barcodes onto the df table.
 workflow_table = workflow_table.dropna(subset = ["sample_id"])
 
@@ -190,8 +190,7 @@ print()
 rule all:
     input:
         expand(["{out_base}/{sample_id}/read_filtering/{sample_id}.fastq.gz", \
-                "{out_base}/{sample_id}/read_filtering/{sample_id}_nanostat", \
-                "{out_base}/{sample_id}/trimmed/{sample_id}_trimmed.fastq.gz", \
+                "{out_base}/{sample_id}/read_filtering/{sample_id}_nanoqc.html", \
                 "{out_base}/{sample_id}/{sample_id}_kraken2_reads_report.txt", \
                 "{out_base}/{sample_id}/flye/{sample_id}_assembly.fasta", \
                 "{out_base}/{sample_id}/flye/{sample_id}_report.txt", \
@@ -218,7 +217,6 @@ rule merge_reads:
     input:
         barcode_dir = directory(lambda wildcards: workflow_table[workflow_table["sample_id"] == wildcards.sample_id]["barcode_path"].values[0])
     output: "{out_base}/{sample_id}/read_filtering/{sample_id}.fastq.gz"
-    conda: "configs/conda.yaml"
     threads: 1
     shell: """
 
@@ -227,43 +225,28 @@ rule merge_reads:
 
     """
 # Basic QC
-rule nanostat:
+rule nanoqc:
     input:
         "{out_base}/{sample_id}/read_filtering/{sample_id}.fastq.gz"
     output: 
-        "{out_base}/{sample_id}/read_filtering/{sample_id}_nanostat"
-    conda: "configs/nanostat.yaml"
+        "{out_base}/{sample_id}/read_filtering/{sample_id}_nanoqc.html"
+    conda: "configs/nanoqc.yaml"
     threads: 1
     shell: """
-
-    NanoStat --fastq {input} -o {out_base}/{wildcards.sample_id}/read_filtering/ -n {wildcards.sample_id}_nanostat
-
-    """
-
-# Trim adapters. This is generally already done in minknow making this a backup step.
-rule trim_adapt:
-    input: 
-        "{out_base}/{sample_id}/read_filtering/{sample_id}.fastq.gz"
-    output: 
-        "{out_base}/{sample_id}/trimmed/{sample_id}_trimmed.fastq.gz"
-    conda: "configs/conda.yaml"
-    threads: 4
-    shell: """
-
-    mkdir -p {out_base}/{wildcards.sample_id}/trimmed
-
-    porechop -i {input} --format fastq.gz -t {threads} -o {output}
+    nanoQC {input} -o {out_base}/{wildcards.sample_id}
+    mv {out_base}/{wildcards.sample_id}/nanoQC.html {output}
 
     """
+
 
 # Find species present in samples. Note that becaue kraken2 works better on Illumina, we will not see a 100 % species match even on isolates.
 rule kraken2:
     input:
-        "{out_base}/{sample_id}/trimmed/{sample_id}_trimmed.fastq.gz"
+        "{out_base}/{sample_id}/read_filtering/{sample_id}.fastq.gz"
     output: 
         "{out_base}/{sample_id}/{sample_id}_kraken2_reads_report.txt"
     threads: 16
-    conda: "configs/conda.yaml"
+    conda: "configs/kraken2.yaml"
     shell: """
         kraken2 --db {kraken2_db} --report {output} --threads {threads} {input}  --unclassified-out {out_base}/{wildcards.sample_id}/kraken2/{wildcards.sample_id}_unclassified.fastq.gz  
     """
@@ -271,10 +254,10 @@ rule kraken2:
 ######### Not the best assembler but ok. This should be updated to a different and better assembler eventually.
 rule assemble:
     input: 
-        "{out_base}/{sample_id}/trimmed/{sample_id}_trimmed.fastq.gz"
+        "{out_base}/{sample_id}/read_filtering/{sample_id}.fastq.gz"
     output: 
         contigs = "{out_base}/{sample_id}/flye/{sample_id}_assembly.fasta"
-    conda: "configs/conda.yaml"
+    conda: "configs/flye.yaml"
     threads: 4
     shell: """
 
@@ -289,7 +272,7 @@ rule qc_assemble:
         "{out_base}/{sample_id}/flye/{sample_id}_assembly.fasta"
     output: 
         assembly_stats = "{out_base}/{sample_id}/flye/{sample_id}_report.txt"
-    conda: "configs/conda.yaml"
+    conda: "configs/quast.yaml"
     threads: 1
     shell: """
 
@@ -304,7 +287,7 @@ rule qc_assemble:
 
 rule medaka:
     input:
-        reads = "{out_base}/{sample_id}/trimmed/{sample_id}_trimmed.fastq.gz",
+        reads = "{out_base}/{sample_id}/read_filtering/{sample_id}.fastq.gz",
         contigs = "{out_base}/{sample_id}/flye/{sample_id}_assembly.fasta"
     output:
         consensus = "{out_base}/{sample_id}/{sample_id}_consensus.fasta",
@@ -321,6 +304,9 @@ rule medaka:
         mv {out_base}/{wildcards.sample_id}/medaka/calls_to_draft.bam {output.mapping}
 
             """
+        #It is not recommended to specify a value of --threads greater than 2 for medaka consensus since the compute scaling efficiency is poor beyond this. 
+        #Note also that medaka consensus may been seen to use resources equivalent to <threads> + 4 as an additional 4 threads are used for reading and preparing input data.
+
 
 # QC. All reads should map back to the created assembly.
 rule mapping_qc:
@@ -329,7 +315,7 @@ rule mapping_qc:
     output:
         "{out_base}/{sample_id}/qualimapReport.html"
         
-    conda: "configs/conda.yaml"
+    conda: "configs/qualimap.yaml"
     threads: 4
     shell: """
 
@@ -338,8 +324,6 @@ rule mapping_qc:
 
             """
 
-        #It is not recommended to specify a value of --threads greater than 2 for medaka consensus since the compute scaling efficiency is poor beyond this. 
-        #Note also that medaka consensus may been seen to use resources equivalent to <threads> + 4 as an additional 4 threads are used for reading and preparing input data.
 
 # Annotate genes.
 rule annotate_genes:
@@ -360,13 +344,16 @@ rule annotate_genes:
         cp {out_base}/{wildcards.sample_id}/prokka/{wildcards.sample_id}.gbk {output.gbk}
 
         """
-# Collects the output in a report. TODO was customise this, maybe replace with a strict markdown script instead for full control
+
+# Collects the output in a report. TODO: Customise this, maybe replace with a strict markdown script instead for full control
 rule multiqc:
     input:
-        expand("{out_base}/{sample_id}/{sample_id}_consensus.gff", out_base = out_base, sample_id = df["sample_id"])
+        expand("{out_base}/{sample_id}/{sample_id}_consensus.gff", out_base = out_base, sample_id = df["sample_id"]),
+        expand("{out_base}/{sample_id}/amr/{sample_id}_amrfinder.txt", out_base = out_base, sample_id = df["sample_id"]),
+        expand("{out_base}/{sample_id}/amr/{sample_id}_abricate_plasmid.txt", out_base = out_base, sample_id = df["sample_id"]),
     output:
         "{out_base}/multiqc_report.html"
-    conda: "configs/conda.yaml"
+    conda: "configs/multiqc.yaml"
     threads: 1
     shell: """
         multiqc -d -dd 3 {out_base} -o {out_base} -f 
@@ -376,17 +363,14 @@ rule multiqc:
 # Finds resistance genes. This is not working perfectly
 rule amr_finder:
     input:
-        faa = "{out_base}/{sample_id}/prokka/{sample_id}.faa",
-        fna = "{out_base}/{sample_id}/prokka/{sample_id}.fna",
-        gff = "{out_base}/{sample_id}/{sample_id}_consensus.gff"
+        consensus = "{out_base}/{sample_id}/{sample_id}_consensus.fasta",
     output:
         "{out_base}/{sample_id}/amr/{sample_id}_amrfinder.txt"
     conda: "configs/amr.yaml"
-    threads: 1
+    threads: 4
     shell: """
         mkdir -p {out_base}/{wildcards.sample_id}/amr
-        amrfinder -p {input.faa} -n {input.fna} -g {input.gff} --plus -a prokka -i 0.7 -o {output} -d {amr_db}
-
+        amrfinder --nucleotide {input.consensus} --database {amr_db} --ident_min 0.9 --coverage_min 0.5 --threads 4 --output {output}
 
         """
 # Finds plasmids
