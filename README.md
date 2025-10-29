@@ -30,7 +30,7 @@ git clone https://github.com/KMA-Aarhus/AssembleQCNanopore.git
 ## How to run
 Set up an alias for snakemake to run on slurm:
 ```
-alias snakeslurm='mkdir -p logs/old; mv logs/*.{err,out} logs/old 2> /dev/null; snakemake --profile configs/slurm --use-conda --conda-frontend mamba --j 20'
+alias snakeslurm='mkdir -p logs/old; mv logs/*.{err,out} logs/old 2> /dev/null; snakemake --profile configs/slurm --use-conda --conda-frontend mamba --jobs 20'
 ```
 Navigate to AssemblyQCNanopore directory where the snakefile is.  
 The scripts does not allow overlaps in barcodes. If you have sequencing runs, the analysis must be started for each run.
