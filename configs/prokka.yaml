@@ -2,7 +2,6 @@ name: prokka
 channels:
   - conda-forge
   - bioconda
-  - defaults
 dependencies:
   - prokka = 1.14
   - blast = 2.12 
